@@ -180,6 +180,31 @@
               <el-option label="速度测试" value="urltest" />
             </el-select>
           </el-form-item>
+          
+          <!-- 速度测试模式的额外选项 -->
+          <template v-if="filterDialog.form.mode === 'urltest'">
+            <el-form-item label="测试URL">
+              <el-input 
+                v-model="filterDialog.form.url" 
+                placeholder="https://www.gstatic.com/generate_204"
+                :disabled="loading.filter" />
+              <div class="form-item-tip">用于测试的链接。默认使用 https://www.gstatic.com/generate_204</div>
+            </el-form-item>
+            <el-form-item label="测试间隔">
+              <el-input 
+                v-model="filterDialog.form.interval" 
+                placeholder="3m"
+                :disabled="loading.filter" />
+              <div class="form-item-tip">测试间隔。默认使用 3m</div>
+            </el-form-item>
+            <el-form-item label="空闲超时">
+              <el-input 
+                v-model="filterDialog.form.idle_timeout" 
+                placeholder="30m"
+                :disabled="loading.filter" />
+              <div class="form-item-tip">空闲超时。默认使用 30m</div>
+            </el-form-item>
+          </template>
         </el-form>
         <template #footer>
           <span class="dialog-footer">
@@ -238,7 +263,17 @@ const subscriptionDialog = reactive({
 const filterDialog = reactive({ 
   visible: false, 
   isEdit: false, 
-  form: { name: '', include: '', exclude: '', allNodes: true, node: '', mode: 'select' } 
+  form: { 
+    name: '', 
+    include: '', 
+    exclude: '', 
+    allNodes: true, 
+    node: '', 
+    mode: 'select',
+    url: '',
+    interval: '',
+    idle_timeout: ''
+  } 
 })
 const nodeOptions = computed(() => {
   // 根据订阅列表生成节点选项
@@ -394,7 +429,10 @@ const handleAddFilter = () => {
     exclude: '', 
     allNodes: true, 
     node: '', 
-    mode: 'select' 
+    mode: 'select',
+    url: '',
+    interval: '',
+    idle_timeout: ''
   }
 }
 

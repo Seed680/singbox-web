@@ -231,34 +231,31 @@ export default {
     const resetToBaseConfig = async () => {
       try {
         await ElMessageBox.confirm(
-          '确定要将当前配置重置为基础配置吗？这将覆盖现有的 config.json 文件。',
+          '确定要将当前配置重置为基础配置吗？这将立即覆盖 config.json 文件。',
           '重置确认',
           {
-            confirmButtonText: '确定',
+            confirmButtonText: '确定重置',
             cancelButtonText: '取消',
             type: 'warning'
           }
         )
 
-        if (!baseEditor) {
-          ElMessage.error('请先加载基础配置')
-          return
-        }
+        // 调用新的后端API来执行重置
+        const response = await fetch('/api/config/reset', { method: 'POST' })
+        const data = await response.json()
 
-        const baseConfig = baseEditor.get()
-        
-        if (mainEditor) {
-          mainEditor.set(baseConfig)
+        if (response.ok && data.success) {
+          ElMessage.success('当前配置已成功重置！正在重新加载...')
+          // 重置成功后，重新加载右侧的编辑器
+          await loadMainConfig()
+        } else {
+          throw new Error(data.error || '重置失败')
         }
-        
-        // 保存重置后的配置
-        await saveMainConfig()
-        
-        ElMessage.success('配置已重置为基础配置')
       } catch (error) {
-        if (error !== 'cancel') {
+        // 如果用户点击了"取消"，则不显示错误消息
+        if (error !== 'cancel' && error.message !== 'cancel') {
           console.error('重置配置失败:', error)
-          ElMessage.error('重置配置失败')
+          ElMessage.error('重置失败: ' + (error.message || error))
         }
       }
     }

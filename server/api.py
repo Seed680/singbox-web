@@ -11,10 +11,15 @@ import subprocess
 import signal
 import psutil
 import shutil
+import threading
+import time
 
 # 获取当前目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(current_dir, 'static')
+
+# PID 文件路径
+PID_FILE = os.path.join(current_dir, 'singbox.pid')
 
 app = Flask(__name__)  # 禁用默认静态服务
 CORS(app)
@@ -31,9 +36,6 @@ node_cache = {}
 # 创建调度器
 scheduler = BackgroundScheduler()
 scheduler.start()
-
-# 全局变量存储singbox进程
-singbox_process = None
 
 def init_subscribe_config():
     """初始化订阅配置文件"""
@@ -273,6 +275,7 @@ def process_subscriptions():
                     'error': str(error)
                 })
         
+        
         # 处理过滤器
         for filter in filters:
             try:
@@ -299,6 +302,15 @@ def process_subscriptions():
                         'tag': f"filter.{filter['name']}",
                         'outbounds': [node['tag'] for node in matched_nodes]
                     }
+                    
+                    # 如果是速度测试模式，添加额外参数
+                    if filter.get('mode') == 'urltest':
+                        if filter.get('url'):
+                            filter_outbound['url'] = filter['url']
+                        if filter.get('interval'):
+                            filter_outbound['interval'] = filter['interval']
+                        if filter.get('idle_timeout'):
+                            filter_outbound['idle_timeout'] = filter['idle_timeout']
                     
                     # 添加到主配置的 outbounds
                     main_config['outbounds'].append(filter_outbound)
@@ -1403,184 +1415,167 @@ def check_singbox_exists():
         return False
 
 def get_singbox_status():
-    """获取singbox运行状态"""
-    global singbox_process
+    """获取 sing-box 核心状态 (通过 PID 文件)"""
+    if not os.path.exists(PID_FILE):
+        return 'stopped', None
+    
     try:
-        if singbox_process is None:
-            return False
-        
-        # 检查进程是否还在运行
-        if singbox_process.poll() is not None:
-            singbox_process = None
-            return False
-            
-        return True
-    except Exception as e:
-        print(f'获取singbox状态失败: {str(e)}')
-        return False
+        with open(PID_FILE, 'r') as f:
+            pid = int(f.read().strip())
+    except (IOError, ValueError):
+        try:
+            os.remove(PID_FILE)
+        except OSError:
+            pass
+        return 'stopped', None
+
+    if psutil.pid_exists(pid):
+        try:
+            p = psutil.Process(pid)
+            if 'sing-box' in p.name():
+                return 'running', pid
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    print(f"检测到过期的 PID 文件 (PID: {pid})，正在清理...")
+    try:
+        os.remove(PID_FILE)
+    except OSError:
+        pass
+    return 'stopped', None
 
 def start_singbox():
-    """启动singbox服务"""
-    global singbox_process
+    """启动 sing-box 核心并记录 PID"""
+    status, pid = get_singbox_status()
+    if status == 'running':
+        return f'Singbox is already running with PID: {pid}'
+
     try:
-        # 如果已经在运行，直接返回
-        if get_singbox_status():
-            return True
-            
-        # 检查可执行文件是否存在
-        if not check_singbox_exists():
-            # 更新singbox
-            update_singbox()
-            # 再次检查
-            if not check_singbox_exists():
-                raise Exception('无法找到singbox可执行文件')
-        
-        # 获取当前目录
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        singbox_path = './sing-box'  # 使用相对路径
-        config_file = 'config.json'  # 使用相对路径
-        config_path = os.path.join(current_dir, CONFIG_FILE)  # 用于检查文件是否存在
+        singbox_path = os.path.join(current_dir, 'sing-box')
+        config_path = os.path.join(current_dir, CONFIG_FILE)
+
+        if not os.path.exists(singbox_path) or not os.access(singbox_path, os.X_OK):
+            return f"Error: 'sing-box' not found or not executable at {singbox_path}"
         
-        # 检查配置文件是否存在
         if not os.path.exists(config_path):
-            # 初始化配置文件
-            init_config_file()
-            # 再次检查
-            if not os.path.exists(config_path):
-                raise Exception('无法找到配置文件')
+            return f"Error: '{CONFIG_FILE}' not found at {config_path}"
+
+        print(f"Starting sing-box with command: {singbox_path} run -c {config_path}")
         
-        print(f'在目录 {current_dir} 中执行命令: {singbox_path} run -c {config_file}')
+        process = subprocess.Popen([singbox_path, 'run', '-c', config_path],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   text=True,
+                                   cwd=current_dir)
         
-        # 启动singbox进程 - 使用您要求的命令格式
-        singbox_process = subprocess.Popen(
-            [singbox_path, 'run', '-c', config_file],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=current_dir  # 设置工作目录
-        )
-        
-        # 等待一小段时间检查进程是否成功启动
-        import time
+        pid = process.pid
+        with open(PID_FILE, 'w') as f:
+            f.write(str(pid))
+
+        def monitor_output(pipe):
+            with pipe:
+                for line in iter(pipe.readline, ''):
+                    line = line.strip()
+                    if line:
+                        print(f"[sing-box] {line}")
+
+        threading.Thread(target=monitor_output, args=[process.stdout], daemon=True).start()
+        threading.Thread(target=monitor_output, args=[process.stderr], daemon=True).start()
+
         time.sleep(2)
-        
-        if singbox_process.poll() is not None:
-            # 进程已经退出，读取错误输出
-            try:
-                stdout_output = singbox_process.stdout.read().decode('utf-8')
-                stderr_output = singbox_process.stderr.read().decode('utf-8')
-                error_msg = f'命令执行失败\n标准输出: {stdout_output}\n错误输出: {stderr_output}'
-                print(error_msg)
-                raise Exception(error_msg)
-            except Exception as e:
-                raise Exception(f'启动 sing-box 失败: {str(e)}')
-        else:
-            # 进程正在运行
-            print(f'sing-box 服务启动成功，PID: {singbox_process.pid}')
-            
-        return True
+        if process.poll() is not None:
+            print(f"Singbox process terminated unexpectedly with code {process.returncode}.")
+            if os.path.exists(PID_FILE):
+                os.remove(PID_FILE)
+            return f"Singbox process terminated unexpectedly."
+
+        print(f"Singbox started successfully with PID: {pid}")
+        return 'Singbox started successfully'
     except Exception as e:
-        print(f'启动singbox失败: {str(e)}')
-        return False
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+        return f"Failed to start Singbox: {str(e)}"
 
 def stop_singbox():
-    """停止singbox服务"""
-    global singbox_process
+    """停止 sing-box 核心 (通过 PID 文件)"""
+    status, pid = get_singbox_status()
+    if status == 'stopped':
+        return 'Singbox is not running'
+
     try:
-        if not get_singbox_status():
-            return True
-            
-        # 获取进程ID
-        pid = singbox_process.pid
-        
-        # 终止进程及其子进程
+        print(f"Stopping sing-box process with PID: {pid}")
         parent = psutil.Process(pid)
         for child in parent.children(recursive=True):
-            child.terminate()
-        parent.terminate()
-        
-        # 等待进程结束
-        singbox_process.wait(timeout=5)
-        singbox_process = None
-        return True
+            child.kill()
+        parent.kill()
+        parent.wait(timeout=5)
+    except psutil.NoSuchProcess:
+        print(f"Process with PID {pid} not found, might have been stopped already.")
     except Exception as e:
-        print(f'停止singbox失败: {str(e)}')
-        return False
+        return f"Failed to stop Singbox: {str(e)}"
+    finally:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    
+    return 'Singbox stopped successfully'
 
 @app.route('/api/singbox/status', methods=['GET', 'OPTIONS'])
 def get_status():
-    """获取singbox状态的API接口"""
+    """获取 sing-box 核心状态"""
     if request.method == 'OPTIONS':
-        response = make_response('', 204)
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return response
+        return _build_cors_preflight_response()
     
-    try:
-        status = get_singbox_status()
-        response = jsonify({
-            'success': True,
-            'running': status
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
-    except Exception as e:
-        response = jsonify({
-            'success': False,
-            'error': str(e)
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 500
+    status, pid = get_singbox_status()
+    return jsonify({'status': status, 'pid': pid})
 
 @app.route('/api/singbox/start', methods=['POST', 'OPTIONS'])
 def start_service():
-    """启动singbox服务的API接口"""
+    """启动 sing-box 服务"""
     if request.method == 'OPTIONS':
-        response = make_response('', 204)
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return response
+        return _build_cors_preflight_response()
     
-    try:
-        result = start_singbox()
-        response = jsonify({
-            'success': result
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
-    except Exception as e:
-        response = jsonify({
-            'success': False,
-            'error': str(e)
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 500
+    # 确保配置已合并
+    print("Processing subscriptions before starting...")
+    process_subscriptions()
+    
+    result = start_singbox()
+    status, pid = get_singbox_status()
+    
+    return jsonify({'message': result, 'status': status, 'pid': pid})
 
 @app.route('/api/singbox/stop', methods=['POST', 'OPTIONS'])
 def stop_service():
-    """停止singbox服务的API接口"""
+    """停止 sing-box 服务"""
     if request.method == 'OPTIONS':
-        response = make_response('', 204)
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return response
+        return _build_cors_preflight_response()
+    
+    result = stop_singbox()
+    status, pid = get_singbox_status()
+    
+    return jsonify({'message': result, 'status': status, 'pid': pid})
+
+@app.route('/api/config/reset', methods=['POST', 'OPTIONS'])
+def reset_main_config():
+    """将当前配置重置为基础配置"""
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
     
     try:
-        result = stop_singbox()
-        response = jsonify({
-            'success': result
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
+        base_config_path = os.path.join(current_dir, MAIN_CONFIG_FILE)
+        main_config_path = os.path.join(current_dir, CONFIG_FILE)
+
+        if not os.path.exists(base_config_path):
+            return jsonify({'success': False, 'error': '基础配置文件不存在'}), 404
+
+        # 使用 shutil.copy 来覆盖文件
+        shutil.copy(base_config_path, main_config_path)
+        
+        return jsonify({'success': True, 'message': '当前配置已成功重置为基础配置'})
+
     except Exception as e:
-        response = jsonify({
-            'success': False,
-            'error': str(e)
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, 500
+        print(f'重置配置文件失败: {str(e)}')
+        return jsonify({'success': False, 'error': f'重置配置文件失败: {str(e)}'}), 500
 
 def update_all_node_outbounds(main_config):
     """统一更新所有节点的outbounds，包含订阅节点、过滤器节点和额外出站节点"""
@@ -1614,7 +1609,7 @@ def update_all_node_outbounds(main_config):
         print(f'额外出站节点标签: {extra_outbound_tags}')
         
         # 所有需要添加的节点标签
-        all_additional_tags = subscription_tags + filter_tags + extra_outbound_tags
+        all_additional_tags = filter_tags+ subscription_tags + extra_outbound_tags
         
         # 更新所有包含 outbounds 的节点
         for outbound in main_config['outbounds']:
@@ -1735,6 +1730,14 @@ def handle_base_config():
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
 
+def _build_cors_preflight_response():
+    """构建CORS预检请求的响应"""
+    response = make_response()
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add('Access-Control-Allow-Headers', "*")
+    response.headers.add('Access-Control-Allow-Methods', "*")
+    return response
+
 # 静态文件服务和前端路由处理 (放在所有API路由之后)
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -1762,12 +1765,10 @@ def catch_all(path):
     
     return "Frontend not built. Please run 'npm run build' in singbox-web directory.", 404
 
+# 主程序入口
 if __name__ == '__main__':
-    # 初始化应用
     init_app()
-    
-    print("Singbox Web 管理面板启动中...")
-    print("访问地址: http://0.0.0.0:3001")
-    print("如需构建前端，请运行: npm run build")
-    
-    app.run(host='0.0.0.0', port=3001, debug=True) 
+    app.run(host='0.0.0.0', port=3001, debug=True)
+
+# 确保 gunicorn 启动时不会重复初始化
+# init_app() 

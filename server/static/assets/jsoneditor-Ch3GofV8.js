@@ -1,4 +1,4 @@
-import{A as Ue}from"./index-BZk_pjB3.js";var Ve={exports:{}};/*!
+import{D as Ue}from"./index-DQld8f5N.js";var Ve={exports:{}};/*!
  * jsoneditor.js
  *
  * @brief

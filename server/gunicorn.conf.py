@@ -3,6 +3,10 @@
 import multiprocessing
 import os
 
+# 切换工作目录
+# Gunicorn会以此目录为根目录来寻找应用，确保api.py能找到sing-box等文件
+chdir = os.path.dirname(os.path.abspath(__file__))
+
 # 服务器绑定
 bind = "0.0.0.0:3001"
 

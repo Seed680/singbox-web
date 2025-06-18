@@ -1,7 +1,23 @@
 {
   "subscriptions": [
+    {
+      "name": "home",
+      "url": "http://192.168.5.2:3001/2cXaAxRGfddmGz2yx1wA/download/collection/mine?target=sing-box",
+      "lastUpdate": "2025-06-18T19:04:06.575761"
+    }
   ],
   "filters": [
+    {
+      "name": "home",
+      "include": "",
+      "exclude": "",
+      "allNodes": true,
+      "node": "",
+      "mode": "urltest",
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "idle_timeout": "30m"
+    }
   ],
   "ex_outbounds": []
 }

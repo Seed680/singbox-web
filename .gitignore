@@ -68,3 +68,4 @@ instance/
 
 # Temporary download directory
 /server/temp/
+/server/sing-box.pid

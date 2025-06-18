@@ -21,6 +21,7 @@
               :loading="actionLoading"
               @click="handleStart" 
               :disabled="serviceStatus">
+              <el-icon><CaretRight /></el-icon>
               立即运行
             </el-button>
             <el-button 
@@ -28,7 +29,15 @@
               :loading="actionLoading"
               @click="handleStop" 
               :disabled="!serviceStatus">
+              <el-icon><VideoPause /></el-icon>
               停止服务
+            </el-button>
+            <el-button
+              type="success"
+              @click="handleOpenPanel"
+              :disabled="!serviceStatus">
+              <el-icon><View /></el-icon>
+              打开面板
             </el-button>
               </div>
             </div>
@@ -41,6 +50,7 @@
 import PageContainer from '../components/PageContainer.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { CaretRight, VideoPause, View } from '@element-plus/icons-vue'
 
 const serviceStatus = ref(false)
 const actionLoading = ref(false)
@@ -50,12 +60,15 @@ let statusInterval = null
 const getStatus = async () => {
   try {
     const response = await fetch('/api/singbox/status')
-    const data = await response.json()
-    if (data.success) {
-      serviceStatus.value = data.running
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
+    const data = await response.json()
+    serviceStatus.value = data.status === 'running'
   } catch (error) {
     console.error('获取服务状态失败:', error)
+    // 出现错误时，保守地将状态设置为停止
+    serviceStatus.value = false
   }
 }
 
@@ -68,15 +81,18 @@ const handleStart = async () => {
       method: 'POST'
     })
     const data = await response.json()
-    if (data.success) {
-      ElMessage.success('服务启动成功')
-      await getStatus()
+    if (response.ok) {
+      ElMessage.success(data.message || '服务启动成功')
+      // 立即更新状态，而不是等待轮询
+      serviceStatus.value = data.status === 'running'
     } else {
-      ElMessage.error(data.error || '服务启动失败')
+      ElMessage.error(data.message || '服务启动失败')
+      serviceStatus.value = false
     }
   } catch (error) {
     console.error('启动服务失败:', error)
-    ElMessage.error('启动服务失败')
+    ElMessage.error('启动服务失败，请检查后端日志')
+    serviceStatus.value = false
   } finally {
     actionLoading.value = false
   }
@@ -91,18 +107,26 @@ const handleStop = async () => {
       method: 'POST'
     })
     const data = await response.json()
-    if (data.success) {
-      ElMessage.success('服务停止成功')
-      await getStatus()
+    if (response.ok) {
+      ElMessage.success(data.message || '服务停止成功')
+      // 立即更新状态
+      serviceStatus.value = data.status === 'running'
     } else {
-      ElMessage.error(data.error || '服务停止失败')
+      ElMessage.error(data.message || '服务停止失败')
     }
   } catch (error) {
     console.error('停止服务失败:', error)
-    ElMessage.error('停止服务失败')
+    ElMessage.error('停止服务失败，请检查后端日志')
   } finally {
     actionLoading.value = false
   }
+}
+
+// 打开 Clash API 面板
+const handleOpenPanel = () => {
+  const currentIp = window.location.hostname
+  const url = `http://${currentIp}:9090/ui/`
+  window.open(url, '_blank')
 }
 
 // 组件挂载时开始定时获取状态
