@@ -48,7 +48,7 @@ node_modules/
 *.pyd
 
 # Database files
-/singbox-web/server/cache.db
+/server/cache.db
 *.sqlite3
 
 # Instance folder
@@ -59,12 +59,12 @@ instance/
 # Project-specific Files (IMPORTANT)
 # ===================================================================
 # User-specific configurations (allow base_config.json)
-/singbox-web/server/config.json
-/singbox-web/server/subscribe_config.json
-/singbox-web/server/tasks_config.json
+/server/config.json
+/server/subscribe_config.json
+/server/tasks_config.json
 
 # Downloaded sing-box binary and backups
-/singbox-web/server/sing-box
+/server/sing-box
 
 # Temporary download directory
-/singbox-web/server/temp/
+/server/temp/

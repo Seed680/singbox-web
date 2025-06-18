@@ -126,6 +126,7 @@
               v-model="subscriptionDialog.form.url" 
               placeholder="请输入订阅地址"
               :disabled="loading.subscription" />
+            <div class="form-item-tip">请填写singbox格式的订阅链接，推荐使用substore进行订阅转换</div>
           </el-form-item>
         </el-form>
         <template #footer>
@@ -562,17 +563,11 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 .form-item-tip {
-  font-size: 12px;
   color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
   margin-top: 4px;
-  line-height: 1.4;
 }
 
 /* 额外出站输入框样式 */
