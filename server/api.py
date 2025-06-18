@@ -37,6 +37,12 @@ node_cache = {}
 scheduler = BackgroundScheduler()
 scheduler.start()
 
+# 全局变量用于存储下载密码
+download_password = None
+
+# 下载配置文件路径
+DOWNLOAD_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'download_config.json')
+
 def init_subscribe_config():
     """初始化订阅配置文件"""
     try:
@@ -1764,6 +1770,66 @@ def catch_all(path):
         return send_file(index_path)
     
     return "Frontend not built. Please run 'npm run build' in singbox-web directory.", 404
+
+def load_download_password():
+    """从配置文件加载下载密码"""
+    global download_password
+    try:
+        if os.path.exists(DOWNLOAD_CONFIG_FILE):
+            with open(DOWNLOAD_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                download_password = config.get('password', '')
+    except Exception as e:
+        print(f"加载下载密码失败: {str(e)}")
+        download_password = ''
+
+def save_download_password(password):
+    """保存下载密码到配置文件"""
+    try:
+        with open(DOWNLOAD_CONFIG_FILE, 'w') as f:
+            json.dump({'password': password}, f, indent=4)
+        return True
+    except Exception as e:
+        print(f"保存下载密码失败: {str(e)}")
+        return False
+
+@app.route('/api/config/download-password', methods=['GET', 'POST'])
+def handle_download_password():
+    global download_password
+    
+    if request.method == 'GET':
+        return jsonify({'password': download_password or ''})
+    
+    # POST 请求处理
+    data = request.get_json()
+    if not data or 'password' not in data:
+        return jsonify({'error': '密码不能为空'}), 400
+    
+    password = data['password']
+    if save_download_password(password):
+        download_password = password
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': '保存密码失败'}), 500
+
+@app.route('/api/config/download/<password>')
+def download_config(password):
+    if not download_password:
+        return jsonify({'error': '未设置下载密码'}), 400
+    
+    if not password or password != download_password:
+        return jsonify({'error': '密码错误'}), 401
+    
+    try:
+        return send_file('config.json', 
+                        as_attachment=True,
+                        download_name='config.json',
+                        mimetype='application/json')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 在应用启动时加载下载密码
+load_download_password()
 
 # 主程序入口
 if __name__ == '__main__':

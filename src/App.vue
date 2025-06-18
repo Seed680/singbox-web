@@ -14,7 +14,8 @@ const activeMenu = computed(() => {
     '/inbound': '2-3',
     '/dns': '2-4',
     '/other-settings': '2-5',
-    '/config-files': '2-6'
+    '/config-files': '2-6',
+    '/download-config': '2-7'
   }
   return pathToMenuMap[route.path] || '1-1'
 })
@@ -29,7 +30,8 @@ const currentRoute = computed(() => {
     '/inbound': '入站',
     '/dns': 'DNS',
     '/other-settings': '其他设置',
-    '/config-files': '配置文件'
+    '/config-files': '配置文件',
+    '/download-config': '下载配置'
   }
   return routeMap[route.path] || '首页'
 })
@@ -43,7 +45,8 @@ const handleSelect = (key) => {
     '2-3': '/inbound',
     '2-4': '/dns',
     '2-5': '/other-settings',
-    '2-6': '/config-files'
+    '2-6': '/config-files',
+    '2-7': '/download-config'
   }
   router.push(routeMap[key])
 }
@@ -90,6 +93,7 @@ const handleRefresh = () => {
           <el-menu-item index="2-4">DNS</el-menu-item>
           <el-menu-item index="2-5">其他设置</el-menu-item>
           <el-menu-item index="2-6">配置文件</el-menu-item>
+          <el-menu-item index="2-7">下载配置</el-menu-item>
         </el-sub-menu>
       </el-menu>
       <div class="collapse-btn" @click="toggleCollapse">
@@ -111,7 +115,7 @@ const handleRefresh = () => {
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
-  </div>
+        </div>
       </el-header>
       <el-main>
         <router-view v-slot="{ Component }">

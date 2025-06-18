@@ -44,6 +44,11 @@ const routes = [
     path: '/config-files',
     name: 'ConfigFiles',
     component: () => import('../views/ConfigFiles.vue')
+  },
+  {
+    path: '/download-config',
+    name: 'DownloadConfig',
+    component: () => import('../views/DownloadConfig.vue')
   }
 ]
 
