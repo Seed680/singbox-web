@@ -1,0 +1,35 @@
+[Unit]
+Description=Singbox Web Management Panel (Production)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# 使用绝对路径确保服务的稳定性
+WorkingDirectory=/root/singbox/singbox-web/server
+ExecStart=/root/singbox/singbox-web/server/venv/bin/gunicorn -c /root/singbox/singbox-web/server/gunicorn.conf.py wsgi:application
+
+# 环境路径也使用绝对路径
+Environment="PATH=/root/singbox/singbox-web/server/venv/bin"
+
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# 性能优化
+LimitNOFILE=65535
+LimitNPROC=65535
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/root/singbox/singbox-web/server
+
+[Install]
+WantedBy=multi-user.target 

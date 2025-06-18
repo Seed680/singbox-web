@@ -1,0 +1,232 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "direct-dns"
+      },
+      {
+        "clash_mode": "Global",
+        "server": "google-dns"
+      },
+      {
+        "clash_mode": "Direct",
+        "server": "direct-dns"
+      },
+      {
+        "rule_set": [
+          "CN-SITE"
+        ],
+        "server": "direct-dns"
+      },
+      {
+        "invert": true,
+        "rule_set": [
+          "CN-SITE"
+        ],
+        "server": "google-dns"
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "rewrite_ttl": 1,
+        "server": "google-dns"
+      }
+    ],
+    "servers": [
+      {
+        "address": "https://dns.google/dns-query",
+        "address_resolver": "direct-dns",
+        "detour": "Proxy",
+        "tag": "google-dns"
+      },
+      {
+        "address": "114.114.114.114",
+        "detour": "Direct",
+        "tag": "direct-dns"
+      },
+      {
+        "address": "rcode://success",
+        "tag": "block-dns"
+      }
+    ],
+    "strategy": "prefer_ipv4"
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    },
+    "clash_api": {
+      "external_controller": "0.0.0.0:9090",
+      "external_ui": "yacd",
+      "external_ui_download_detour": "Proxy"
+    }
+  },
+  "inbounds": [
+    {
+      "address": [
+        "172.16.0.1/30",
+        "fd00::1/126"
+      ],
+      "auto_redirect": true,
+      "auto_route": true,
+      "mtu": 1492,
+      "stack": "system",
+      "strict_route": true,
+      "tag": "tun-in",
+      "type": "tun"
+    },
+    {
+      "listen": "::",
+      "listen_port": 8888,
+      "tag": "mixed-in",
+      "type": "mixed"
+    }
+  ],
+  "log": {
+    "disabled": true,
+    "level": "info",
+    "output": "",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "tag": "Proxy",
+      "type": "selector",
+      "outbounds": [
+        "Direct"
+      ]
+    },
+    {
+      "tag": "Direct",
+      "type": "direct"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "Proxy",
+    "rule_set": [
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Youtube0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/youtube.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Telegram0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geoip/telegram.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Telegram1",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/telegram.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Spotify0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/spotify.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Netflix0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geoip/netflix.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Netflix1",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/netflix.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Github0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/github.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Google0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/google.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Openai0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/openai.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "Steam0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/steam.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "CN0",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geoip/cn.srs"
+      },
+      {
+        "download_detour": "Proxy",
+        "format": "binary",
+        "tag": "CN-SITE",
+        "type": "remote",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/sing/geo/geosite/cn.srs"
+      }
+    ],
+    "rules": [
+      {
+        "action": "sniff",
+        "inbound": [
+          "tun-in",
+          "mixed-in"
+        ]
+      },
+      {
+        "action": "hijack-dns",
+        "protocol": "dns"
+      },
+      {
+        "action": "reject",
+        "network": "tcp",
+        "port": 853
+      },
+      {
+        "action": "reject",
+        "network": "udp",
+        "port": 443
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "Direct"
+      },
+      {
+        "action": "route",
+        "outbound": "Direct",
+        "rule_set": [
+          "CN0",
+          "CN1"
+        ]
+      }
+    ]
+  }
+}
