@@ -21,14 +21,38 @@ static_dir = os.path.join(current_dir, 'static')
 # PID 文件路径
 PID_FILE = os.path.join(current_dir, 'singbox.pid')
 
+# 配置文件路径
+CONFIG_FILE = os.path.join(current_dir, 'config.json')
+SUBSCRIBE_CONFIG_FILE = os.path.join(current_dir, 'subscribe_config.json')
+MAIN_CONFIG_FILE = os.path.join(current_dir, 'base_config.json')
+TASKS_CONFIG_FILE = os.path.join(current_dir, 'tasks_config.json')
+
+def init_config_files():
+    """初始化配置文件，如果config.json不存在则从base_config.json复制"""
+    try:
+        # 检查base_config.json是否存在
+        if not os.path.exists(MAIN_CONFIG_FILE):
+            print(f"错误：基础配置文件 {MAIN_CONFIG_FILE} 不存在")
+            return False
+            
+        # 如果config.json不存在，从base_config.json复制
+        if not os.path.exists(CONFIG_FILE):
+            print(f"配置文件 {CONFIG_FILE} 不存在，正在从 {MAIN_CONFIG_FILE} 复制...")
+            shutil.copy2(MAIN_CONFIG_FILE, CONFIG_FILE)
+            print(f"已创建配置文件：{CONFIG_FILE}")
+        
+        return True
+    except Exception as e:
+        print(f"初始化配置文件失败: {str(e)}")
+        return False
+
+# 在创建Flask应用之前初始化配置文件
+if not init_config_files():
+    print("初始化配置文件失败，程序退出")
+    exit(1)
+
 app = Flask(__name__)  # 禁用默认静态服务
 CORS(app)
-
-# 配置文件路径
-CONFIG_FILE = 'config.json'
-SUBSCRIBE_CONFIG_FILE = 'subscribe_config.json'
-MAIN_CONFIG_FILE = 'base_config.json'
-TASKS_CONFIG_FILE = 'tasks_config.json'
 
 # 节点缓存
 node_cache = {}
@@ -41,7 +65,7 @@ scheduler.start()
 download_password = None
 
 # 下载配置文件路径
-DOWNLOAD_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'download_config.json')
+DOWNLOAD_CONFIG_FILE = os.path.join(current_dir, 'download_config.json')
 
 def init_subscribe_config():
     """初始化订阅配置文件"""
@@ -1833,8 +1857,16 @@ load_download_password()
 
 # 主程序入口
 if __name__ == '__main__':
-    init_app()
-    app.run(host='0.0.0.0', port=3001, debug=True)
+    # 在应用启动前初始化配置文件
+    if not init_config_files():
+        print("初始化配置文件失败，程序退出")
+        exit(1)
+        
+    # 加载下载密码
+    load_download_password()
+    
+    # 启动应用
+    app.run(host='0.0.0.0', port=5000)
 
 # 确保 gunicorn 启动时不会重复初始化
 # init_app() 
