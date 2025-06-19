@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Monitor, Setting, Expand, Fold, Refresh, User, SwitchButton, ArrowDown, Menu } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -22,7 +22,32 @@ const activeMenu = computed(() => {
   return pathToMenuMap[route.path] || '1-1'
 })
 const isCollapse = ref(false)
-const isMobileMenuOpen = ref(false)
+const isMobile = ref(false)
+const isMenuCollapsed = ref(true) // 在移动端，菜单默认是收起的
+
+const checkIsMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+onMounted(() => {
+  checkIsMobile()
+  window.addEventListener('resize', checkIsMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkIsMobile)
+})
+
+const finalIsCollapse = computed(() => {
+  return isMobile.value ? false : isCollapse.value
+})
+
+const asideWidth = computed(() => {
+  if (isMobile.value) {
+    return '200px'
+  }
+  return isCollapse.value ? '64px' : '200px'
+})
 
 const currentRoute = computed(() => {
   const routeMap = {
@@ -34,7 +59,8 @@ const currentRoute = computed(() => {
     '/dns': 'DNS',
     '/other-settings': '其他设置',
     '/config-files': '配置文件',
-    '/download-config': '下载配置'
+    '/download-config': '下载配置',
+    '/change-password': '修改密码'
   }
   return routeMap[route.path] || '首页'
 })
@@ -52,16 +78,17 @@ const handleSelect = (key) => {
     '2-7': '/download-config'
   }
   router.push(routeMap[key])
-  // 移动端切换路由时关闭菜单
-  isMobileMenuOpen.value = false
+  if (isMobile.value) {
+    isMenuCollapsed.value = true
+  }
 }
 
 const toggleCollapse = () => {
-  isCollapse.value = !isCollapse.value
-}
-
-const toggleMobileMenu = () => {
-  isMobileMenuOpen.value = !isMobileMenuOpen.value
+  if (isMobile.value) {
+    isMenuCollapsed.value = !isMenuCollapsed.value
+  } else {
+    isCollapse.value = !isCollapse.value
+  }
 }
 
 const handleRefresh = () => {
@@ -92,16 +119,16 @@ const handleUserAction = async (command) => {
     <router-view />
   </div>
   <el-container v-else class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside" :class="{ 'mobile-show': isMobileMenuOpen }">
+    <el-aside :width="asideWidth" class="aside" :class="{ 'mobile-collapsed': isMobile && isMenuCollapsed }">
       <div class="logo-container">
-        <img src="/vite.svg" alt="Logo" class="logo" :class="{ 'logo-collapse': isCollapse }" />
-        <span class="title" v-show="!isCollapse">SingBox</span>
+        <img src="/vite.svg" alt="Logo" class="logo" />
+        <span class="title" v-show="!finalIsCollapse">SingBox</span>
       </div>
       <el-menu
         :default-active="activeMenu"
         class="el-menu-vertical"
         @select="handleSelect"
-        :collapse="isCollapse"
+        :collapse="finalIsCollapse"
         :collapse-transition="false"
       >
         <el-sub-menu index="1">
@@ -126,25 +153,26 @@ const handleUserAction = async (command) => {
           <el-menu-item index="2-7">下载配置</el-menu-item>
         </el-sub-menu>
       </el-menu>
-      <div class="collapse-btn" @click="toggleCollapse">
+      <div v-if="!isMobile" class="collapse-btn" @click="toggleCollapse">
         <el-icon :class="{ 'is-collapse': isCollapse }">
           <component :is="isCollapse ? 'Expand' : 'Fold'" />
         </el-icon>
       </div>
     </el-aside>
     <!-- 移动端遮罩 -->
-    <div v-if="isMobileMenuOpen" class="mobile-overlay" @click="toggleMobileMenu"></div>
+    <div v-if="isMobile && !isMenuCollapsed" class="mobile-overlay" @click="toggleCollapse"></div>
     
-    <el-container class="main-container" :class="{ 'collapse': isCollapse }">
+    <el-container class="main-container" :class="{ 'collapse': isCollapse && !isMobile }">
       <el-header class="header">
         <div class="header-left">
           <el-button
+            v-if="isMobile"
             class="mobile-menu-btn"
             type="text"
-            @click="toggleMobileMenu">
+            @click="toggleCollapse">
             <el-icon><Menu /></el-icon>
           </el-button>
-          <el-breadcrumb separator="/">
+          <el-breadcrumb separator="/" v-if="!isMobile">
             <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item>{{ currentRoute }}</el-breadcrumb-item>
           </el-breadcrumb>
@@ -364,16 +392,16 @@ html, body {
   }
   
   .aside {
-    transform: translateX(-100%);
+    transition: transform 0.3s ease;
     z-index: 1001;
   }
   
-  .aside.mobile-show {
-    transform: translateX(0);
+  .aside.mobile-collapsed {
+    transform: translateX(-100%);
   }
   
   .main-container {
-    margin-left: 0;
+    margin-left: 0 !important;
   }
   
   .header {

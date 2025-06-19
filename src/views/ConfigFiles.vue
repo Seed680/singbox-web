@@ -342,49 +342,68 @@ export default {
 .config-files-container {
   display: flex;
   gap: 20px;
-  height: calc(100vh - 200px);
-  min-height: 600px;
+  padding: 10px;
+  background-color: #fafafa;
+  border-radius: 8px;
 }
 
 .config-panel {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 12px 15px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #f9f9f9;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .panel-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: #333;
 }
 
 .panel-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .editor-container {
-  flex: 1;
+  flex-grow: 1;
   position: relative;
-  overflow: hidden;
 }
 
 .json-editor {
-  height: 100%;
   width: 100%;
+  height: 65vh; /* 调整编辑器高度 */
+  border: none;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .config-files-container {
+    flex-direction: column;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* JSONEditor 样式覆盖 */
@@ -408,18 +427,6 @@ export default {
   background: #f5f7fa;
   border-top: 1px solid #e4e7ed;
   color: #606266;
-}
-
-/* 响应式设计 */
-@media (max-width: 1200px) {
-  .config-files-container {
-    flex-direction: column;
-    height: auto;
-  }
-  
-  .config-panel {
-    min-height: 400px;
-  }
 }
 
 /* 加载状态样式 */

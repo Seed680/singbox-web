@@ -231,5 +231,7 @@ onBeforeUnmount(() => {
 .status-actions {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 </style> 

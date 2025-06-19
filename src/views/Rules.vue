@@ -1394,4 +1394,24 @@ onBeforeUnmount(() => {
   background-color: #f5f7fa;
   border-bottom: 1px solid #dcdfe6;
 }
+
+@media (max-width: 768px) {
+  .rules {
+    padding: 10px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .modern-dialog {
+    --el-dialog-width: 95% !important;
+  }
+}
 </style> 
