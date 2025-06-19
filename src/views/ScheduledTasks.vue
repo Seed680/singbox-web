@@ -278,7 +278,7 @@ const handleSave = async () => {
       }
     }
 
-    const response = await fetch('http://localhost:3001/api/tasks', {
+    const response = await fetch('/api/tasks', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -317,7 +317,7 @@ const handleRunNow = async (taskType) => {
       singboxRunning.value = true
     }
 
-    const response = await fetch(`http://localhost:3001/api/tasks/run/${taskType}`, {
+    const response = await fetch(`/api/tasks/run/${taskType}`, {
       method: 'POST'
     })
 

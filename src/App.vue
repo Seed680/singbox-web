@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Monitor, Setting, Expand, Fold, Refresh } from '@element-plus/icons-vue'
+import { Monitor, Setting, Expand, Fold, Refresh, User, SwitchButton, ArrowDown, Menu } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import authUtils from './utils/request.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +22,7 @@ const activeMenu = computed(() => {
   return pathToMenuMap[route.path] || '1-1'
 })
 const isCollapse = ref(false)
+const isMobileMenuOpen = ref(false)
 
 const currentRoute = computed(() => {
   const routeMap = {
@@ -49,20 +52,47 @@ const handleSelect = (key) => {
     '2-7': '/download-config'
   }
   router.push(routeMap[key])
+  // 移动端切换路由时关闭菜单
+  isMobileMenuOpen.value = false
 }
 
 const toggleCollapse = () => {
   isCollapse.value = !isCollapse.value
 }
 
+const toggleMobileMenu = () => {
+  isMobileMenuOpen.value = !isMobileMenuOpen.value
+}
+
 const handleRefresh = () => {
   router.go(0)
+}
+
+const handleUserAction = async (command) => {
+  if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+      
+      authUtils.logout()
+    } catch (error) {
+      // 用户取消
+    }
+  } else if (command === 'changePassword') {
+    router.push('/change-password')
+  }
 }
 </script>
 
 <template>
-  <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside">
+  <div v-if="route.path === '/login'" class="login-wrapper">
+    <router-view />
+  </div>
+  <el-container v-else class="layout-container">
+    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside" :class="{ 'mobile-show': isMobileMenuOpen }">
       <div class="logo-container">
         <img src="/vite.svg" alt="Logo" class="logo" :class="{ 'logo-collapse': isCollapse }" />
         <span class="title" v-show="!isCollapse">SingBox</span>
@@ -102,9 +132,18 @@ const handleRefresh = () => {
         </el-icon>
       </div>
     </el-aside>
+    <!-- 移动端遮罩 -->
+    <div v-if="isMobileMenuOpen" class="mobile-overlay" @click="toggleMobileMenu"></div>
+    
     <el-container class="main-container" :class="{ 'collapse': isCollapse }">
       <el-header class="header">
         <div class="header-left">
+          <el-button
+            class="mobile-menu-btn"
+            type="text"
+            @click="toggleMobileMenu">
+            <el-icon><Menu /></el-icon>
+          </el-button>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item>{{ currentRoute }}</el-breadcrumb-item>
@@ -115,7 +154,26 @@ const handleRefresh = () => {
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
-  </div>
+          <el-dropdown @command="handleUserAction">
+            <span class="user-dropdown">
+              <el-icon><User /></el-icon>
+              <span>管理员</span>
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="changePassword">
+                  <el-icon><Setting /></el-icon>
+                  修改密码
+                </el-dropdown-item>
+                <el-dropdown-item command="logout" divided>
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </el-header>
       <el-main>
         <router-view v-slot="{ Component }">
@@ -251,6 +309,22 @@ html, body {
 .header-left, .header-right {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.user-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background-color 0.3s;
+  color: #606266;
+}
+
+.user-dropdown:hover {
+  background-color: #f5f7fa;
 }
 
 .el-main {
@@ -259,13 +333,42 @@ html, body {
   min-height: calc(100vh - 60px);
 }
 
+/* 移动端菜单按钮 */
+.mobile-menu-btn {
+  display: none;
+  margin-right: 12px;
+  padding: 8px;
+  font-size: 18px;
+}
+
+/* 移动端遮罩 */
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
 /* 响应式布局 */
 @media screen and (max-width: 768px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+  
+  .mobile-overlay {
+    display: block;
+  }
+  
   .aside {
     transform: translateX(-100%);
-}
+    z-index: 1001;
+  }
   
-  .aside.show {
+  .aside.mobile-show {
     transform: translateX(0);
   }
   
@@ -274,7 +377,11 @@ html, body {
   }
   
   .header {
-    padding: 0 10px;
+    padding: 0 15px;
+  }
+  
+  .header-left .el-breadcrumb {
+    display: none;
   }
 }
 
@@ -301,5 +408,15 @@ html, body {
 
 .aside::-webkit-scrollbar-track {
   background-color: #304156;
+}
+
+/* 登录页面独立样式 */
+.login-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
 }
 </style>

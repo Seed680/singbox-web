@@ -13,6 +13,7 @@ import psutil
 import shutil
 import threading
 import time
+from functools import wraps
 
 # 获取当前目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +28,70 @@ SUBSCRIBE_CONFIG_FILE = os.path.join(current_dir, 'subscribe_config.json')
 MAIN_CONFIG_FILE = os.path.join(current_dir, 'base_config.json')
 TASKS_CONFIG_FILE = os.path.join(current_dir, 'tasks_config.json')
 
+# 认证配置文件路径
+AUTH_CONFIG_FILE = os.path.join(current_dir, 'auth_config.json')
+
+def init_auth_config():
+    """初始化认证配置文件"""
+    try:
+        if not os.path.exists(AUTH_CONFIG_FILE):
+            # 创建默认认证配置
+            default_auth = {
+                'username': 'admin',
+                'password': 'admin'
+            }
+            with open(AUTH_CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(default_auth, f, indent=2, ensure_ascii=False)
+            print(f'认证配置文件已创建: {AUTH_CONFIG_FILE}')
+        return True
+    except Exception as e:
+        print(f'初始化认证配置文件失败: {str(e)}')
+        return False
+
+def read_auth_config():
+    """读取认证配置"""
+    try:
+        with open(AUTH_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f'读取认证配置失败: {str(e)}')
+        return {'username': 'admin', 'password': 'admin'}
+
+def save_auth_config(auth_data):
+    """保存认证配置"""
+    try:
+        with open(AUTH_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(auth_data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f'保存认证配置失败: {str(e)}')
+        return False
+
+def require_auth(f):
+    """认证装饰器"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 跳过下载API的认证
+        if request.path.startswith('/api/config/download/'):
+            return f(*args, **kwargs)
+        
+        # 跳过登录API本身
+        if request.path in ['/api/auth/login', '/api/auth/check']:
+            return f(*args, **kwargs)
+            
+        # 检查Authorization头
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': '未授权访问'}), 401
+            
+        token = auth_header.split(' ')[1]
+        # 简单的token验证（在实际应用中应该使用更安全的JWT）
+        if token != 'authenticated':
+            return jsonify({'error': '无效的令牌'}), 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
 def init_config_files():
     """初始化配置文件，如果config.json不存在则从base_config.json复制"""
     try:
@@ -40,6 +105,9 @@ def init_config_files():
             print(f"配置文件 {CONFIG_FILE} 不存在，正在从 {MAIN_CONFIG_FILE} 复制...")
             shutil.copy2(MAIN_CONFIG_FILE, CONFIG_FILE)
             print(f"已创建配置文件：{CONFIG_FILE}")
+        
+        # 初始化认证配置文件
+        init_auth_config()
         
         return True
     except Exception as e:
@@ -408,6 +476,7 @@ def validate_extra_outbounds(outbounds):
     return outbounds
 
 @app.route('/api/config', methods=['GET'])
+@require_auth
 def get_config():
     """获取配置"""
     try:
@@ -431,6 +500,7 @@ def get_config():
         return jsonify({'success': False, 'error': str(error)}), 500
 
 @app.route('/api/subscription', methods=['POST'])
+@require_auth
 def save_subscription():
     """保存订阅"""
     try:
@@ -669,6 +739,7 @@ def delete_filter(name):
         return jsonify({'error': str(error)}), 500
 
 @app.route('/api/outbounds', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_outbounds():
     """获取所有 outbounds"""
     if request.method == 'OPTIONS':
@@ -709,6 +780,7 @@ def get_outbounds():
         return response, 500
 
 @app.route('/api/rules', methods=['GET', 'POST', 'OPTIONS'])
+@require_auth
 def handle_rules():
     """处理规则配置"""
     if request.method == 'OPTIONS':
@@ -802,6 +874,7 @@ def handle_rules():
             return response, 500
 
 @app.route('/api/rule-sets', methods=['GET', 'POST', 'OPTIONS'])
+@require_auth
 def handle_rule_sets():
     """处理规则集配置"""
     if request.method == 'OPTIONS':
@@ -1551,6 +1624,7 @@ def stop_singbox():
     return 'Singbox stopped successfully'
 
 @app.route('/api/singbox/status', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_status():
     """获取 sing-box 核心状态"""
     if request.method == 'OPTIONS':
@@ -1560,6 +1634,7 @@ def get_status():
     return jsonify({'status': status, 'pid': pid})
 
 @app.route('/api/singbox/start', methods=['POST', 'OPTIONS'])
+@require_auth
 def start_service():
     """启动 sing-box 服务"""
     if request.method == 'OPTIONS':
@@ -1575,6 +1650,7 @@ def start_service():
     return jsonify({'message': result, 'status': status, 'pid': pid})
 
 @app.route('/api/singbox/stop', methods=['POST', 'OPTIONS'])
+@require_auth
 def stop_service():
     """停止 sing-box 服务"""
     if request.method == 'OPTIONS':
@@ -1586,6 +1662,7 @@ def stop_service():
     return jsonify({'message': result, 'status': status, 'pid': pid})
 
 @app.route('/api/singbox/restart', methods=['POST', 'OPTIONS'])
+@require_auth
 def restart_service():
     """重启 sing-box 服务"""
     if request.method == 'OPTIONS':
@@ -1928,6 +2005,69 @@ def download_config(password, target=None):
                         mimetype='application/json')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# 认证相关API
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+def auth_login():
+    """用户登录"""
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'success': False, 'error': '用户名和密码不能为空'}), 400
+        
+        auth_config = read_auth_config()
+        if data['username'] == auth_config['username'] and data['password'] == auth_config['password']:
+            return jsonify({'success': True, 'token': 'authenticated'})
+        else:
+            return jsonify({'success': False, 'error': '用户名或密码错误'}), 401
+    
+    except Exception as e:
+        print(f'登录失败: {str(e)}')
+        return jsonify({'success': False, 'error': '登录失败'}), 500
+
+@app.route('/api/auth/check', methods=['GET', 'OPTIONS'])
+def auth_check():
+    """检查认证状态"""
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        if token == 'authenticated':
+            return jsonify({'authenticated': True})
+    
+    return jsonify({'authenticated': False})
+
+@app.route('/api/auth/change-password', methods=['POST', 'OPTIONS'])
+@require_auth
+def change_password():
+    """修改密码"""
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    try:
+        data = request.get_json()
+        if not data or 'oldPassword' not in data or 'newPassword' not in data:
+            return jsonify({'success': False, 'error': '旧密码和新密码不能为空'}), 400
+        
+        auth_config = read_auth_config()
+        if data['oldPassword'] != auth_config['password']:
+            return jsonify({'success': False, 'error': '旧密码错误'}), 401
+        
+        # 更新密码
+        auth_config['password'] = data['newPassword']
+        if save_auth_config(auth_config):
+            return jsonify({'success': True, 'message': '密码修改成功'})
+        else:
+            return jsonify({'success': False, 'error': '密码保存失败'}), 500
+    
+    except Exception as e:
+        print(f'修改密码失败: {str(e)}')
+        return jsonify({'success': False, 'error': '修改密码失败'}), 500
 
 # 在应用启动时加载下载密码
 load_download_password()

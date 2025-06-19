@@ -77,3 +77,29 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* JSONEditor icon color fix */
+.jsoneditor-modes > button {
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+}
+
+.jsoneditor-modes > button:hover {
+  background-color: #eee;
+}
+
+.jsoneditor-modes > button:active,
+.jsoneditor-modes > button:focus,
+.jsoneditor-modes > button.jsoneditor-selected,
+.jsoneditor-modes > button.jsoneditor-selected:hover,
+.jsoneditor-modes > button.jsoneditor-selected:focus {
+    background-color: #ddd;
+    border-color: #ccc;
+}
+
+
+div.jsoneditor-menu > button,
+div.jsoneditor-menu > div.jsoneditor-modes > button {
+    background-color: transparent !important;
+    filter: invert(1);
+}

@@ -633,7 +633,7 @@ const outboundOptions = ref([])
 const fetchOutbounds = async () => {
   try {
     console.log('开始获取 outbounds...')
-    const response = await fetch('http://localhost:3001/api/outbounds')
+    const response = await fetch('/api/outbounds')
     const data = await response.json()
     console.log('获取到的 outbounds 数据:', data)
     if (data.success) {
@@ -1097,7 +1097,7 @@ const ruleSetsContent = ref('')
 const fetchRules = async () => {
   try {
     console.log('开始获取规则...')
-    const response = await fetch('http://localhost:3001/api/rules')
+    const response = await fetch('/api/rules')
     const data = await response.json()
     console.log('获取到的规则数据:', data)
     if (data.success) {
@@ -1120,7 +1120,7 @@ const fetchRules = async () => {
 const fetchRuleSets = async () => {
   try {
     console.log('开始获取规则集...')
-    const response = await fetch('http://localhost:3001/api/rule-sets')
+    const response = await fetch('/api/rule-sets')
     const data = await response.json()
     console.log('获取到的规则集数据:', data)
     if (data.success) {
@@ -1146,7 +1146,7 @@ const handleSaveRules = async () => {
     const rules = rulesEditor.value.get()
     
     // 发送保存请求
-    const response = await fetch('http://localhost:3001/api/rules', {
+    const response = await fetch('/api/rules', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1173,7 +1173,7 @@ const handleSaveRuleSets = async () => {
     const rule_sets = ruleSetsEditor.value.get()
     
     // 发送保存请求
-    const response = await fetch('http://localhost:3001/api/rule-sets', {
+    const response = await fetch('/api/rule-sets', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
