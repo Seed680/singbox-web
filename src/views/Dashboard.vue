@@ -32,6 +32,14 @@
               <el-icon><VideoPause /></el-icon>
               停止服务
             </el-button>
+            <el-button 
+              type="warning" 
+              :loading="actionLoading"
+              @click="handleRestart" 
+              :disabled="!serviceStatus">
+              <el-icon><Refresh /></el-icon>
+              重启服务
+            </el-button>
             <el-button
               type="success"
               @click="handleOpenPanel"
@@ -50,7 +58,7 @@
 import PageContainer from '../components/PageContainer.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CaretRight, VideoPause, View } from '@element-plus/icons-vue'
+import { CaretRight, VideoPause, View, Refresh } from '@element-plus/icons-vue'
 
 const serviceStatus = ref(false)
 const actionLoading = ref(false)
@@ -117,6 +125,32 @@ const handleStop = async () => {
   } catch (error) {
     console.error('停止服务失败:', error)
     ElMessage.error('停止服务失败，请检查后端日志')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// 重启服务
+const handleRestart = async () => {
+  if (actionLoading.value) return
+  actionLoading.value = true
+  try {
+    const response = await fetch('/api/singbox/restart', {
+      method: 'POST'
+    })
+    const data = await response.json()
+    if (response.ok) {
+      ElMessage.success(data.message || '服务重启成功')
+      // 立即更新状态
+      serviceStatus.value = data.status === 'running'
+    } else {
+      ElMessage.error(data.message || '服务重启失败')
+      serviceStatus.value = false
+    }
+  } catch (error) {
+    console.error('重启服务失败:', error)
+    ElMessage.error('重启服务失败，请检查后端日志')
+    serviceStatus.value = false
   } finally {
     actionLoading.value = false
   }

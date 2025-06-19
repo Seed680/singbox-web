@@ -1585,6 +1585,50 @@ def stop_service():
     
     return jsonify({'message': result, 'status': status, 'pid': pid})
 
+@app.route('/api/singbox/restart', methods=['POST', 'OPTIONS'])
+def restart_service():
+    """重启 sing-box 服务"""
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    try:
+        # 先停止服务
+        print("正在停止 sing-box 服务...")
+        stop_result = stop_singbox()
+        print(f"停止结果: {stop_result}")
+        
+        # 等待一小段时间确保服务完全停止
+        import time
+        time.sleep(2)
+        
+        # 确保配置已合并
+        print("Processing subscriptions before restarting...")
+        process_subscriptions()
+        
+        # 重新启动服务
+        print("正在启动 sing-box 服务...")
+        start_result = start_singbox()
+        print(f"启动结果: {start_result}")
+        
+        # 获取最终状态
+        status, pid = get_singbox_status()
+        
+        if status == 'running':
+            message = "sing-box 服务重启成功"
+        else:
+            message = f"重启过程完成，但服务状态异常: {start_result}"
+        
+        return jsonify({'message': message, 'status': status, 'pid': pid})
+        
+    except Exception as e:
+        print(f"重启服务时出错: {str(e)}")
+        status, pid = get_singbox_status()
+        return jsonify({
+            'message': f'重启服务失败: {str(e)}', 
+            'status': status, 
+            'pid': pid
+        }), 500
+
 @app.route('/api/config/reset', methods=['POST', 'OPTIONS'])
 def reset_main_config():
     """将当前配置重置为基础配置"""
