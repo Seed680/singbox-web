@@ -243,7 +243,7 @@ export default {
         // 调用新的后端API来执行重置
         const response = await fetch('/api/config/reset', { method: 'POST' })
         const data = await response.json()
-
+        
         if (response.ok && data.success) {
           ElMessage.success('当前配置已成功重置！正在重新加载...')
           // 重置成功后，重新加载右侧的编辑器

@@ -29,6 +29,19 @@
                 </el-input>
               </div>
             </el-form-item>
+            <el-form-item label="Android下载链接" v-if="form.password">
+              <div class="download-url">
+                <el-input
+                  v-model="androidDownloadUrl"
+                  readonly
+                  :disabled="!form.password"
+                >
+                  <template #append>
+                    <el-button @click="copyAndroidUrl">复制</el-button>
+                  </template>
+                </el-input>
+              </div>
+            </el-form-item>
           </el-form>
         </div>
       </el-card>
@@ -57,12 +70,77 @@ const downloadUrl = computed(() => {
   return `${baseUrl}/api/config/download/${encodeURIComponent(form.value.password)}`
 })
 
+// 计算Android下载URL
+const androidDownloadUrl = computed(() => {
+  if (!form.value.password) return ''
+  const baseUrl = window.location.origin
+  return `${baseUrl}/api/config/download/${encodeURIComponent(form.value.password)}/android`
+})
+
 // 复制下载链接
 const copyUrl = async () => {
   try {
-    await navigator.clipboard.writeText(downloadUrl.value)
-    ElMessage.success('下载链接已复制到剪贴板')
+    // 首先尝试使用现代的 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(downloadUrl.value)
+      ElMessage.success('下载链接已复制到剪贴板')
+      return
+    }
+    
+    // 备用方案：使用传统的 execCommand 方法
+    const textArea = document.createElement('textarea')
+    textArea.value = downloadUrl.value
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    textArea.style.top = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    const successful = document.execCommand('copy')
+    document.body.removeChild(textArea)
+    
+    if (successful) {
+      ElMessage.success('下载链接已复制到剪贴板')
+    } else {
+      throw new Error('复制失败')
+    }
   } catch (err) {
+    console.error('复制失败:', err)
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+// 复制Android下载链接
+const copyAndroidUrl = async () => {
+  try {
+    // 首先尝试使用现代的 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(androidDownloadUrl.value)
+      ElMessage.success('Android下载链接已复制到剪贴板')
+      return
+    }
+    
+    // 备用方案：使用传统的 execCommand 方法
+    const textArea = document.createElement('textarea')
+    textArea.value = androidDownloadUrl.value
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    textArea.style.top = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    const successful = document.execCommand('copy')
+    document.body.removeChild(textArea)
+    
+    if (successful) {
+      ElMessage.success('Android下载链接已复制到剪贴板')
+    } else {
+      throw new Error('复制失败')
+    }
+  } catch (err) {
+    console.error('复制失败:', err)
     ElMessage.error('复制失败，请手动复制')
   }
 }

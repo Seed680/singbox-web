@@ -1837,7 +1837,8 @@ def handle_download_password():
         return jsonify({'error': '保存密码失败'}), 500
 
 @app.route('/api/config/download/<password>')
-def download_config(password):
+@app.route('/api/config/download/<password>/<target>')
+def download_config(password, target=None):
     if not download_password:
         return jsonify({'error': '未设置下载密码'}), 400
     
@@ -1845,6 +1846,38 @@ def download_config(password):
         return jsonify({'error': '密码错误'}), 401
     
     try:
+        # 读取配置文件
+        with open('config.json', 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            
+        # 如果target是android，处理tun节点的auto_route属性
+        if target == 'android':
+            if 'inbounds' in config:
+                for inbound in config['inbounds']:
+                    if isinstance(inbound, dict) and inbound.get('type') == 'tun':
+                        # 删除auto_route属性
+                        if 'auto_redirect' in inbound:
+                            del inbound['auto_redirect']
+            
+            # 创建临时文件来保存修改后的配置
+            temp_config_path = 'temp_config.json'
+            with open(temp_config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+                
+            try:
+                # 发送临时文件
+                return send_file(temp_config_path,
+                            as_attachment=True,
+                            download_name='config.json',
+                            mimetype='application/json')
+            finally:
+                # 删除临时文件
+                try:
+                    os.remove(temp_config_path)
+                except:
+                    pass
+        
+        # 如果没有target参数或target不是android，直接返回原始配置文件
         return send_file('config.json', 
                         as_attachment=True,
                         download_name='config.json',
