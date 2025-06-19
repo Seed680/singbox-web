@@ -204,35 +204,32 @@ def read_config():
         config_path = os.path.join(current_dir, CONFIG_FILE)
         base_config_path = os.path.join(current_dir, MAIN_CONFIG_FILE)
         
-        # 读取基础配置
-        with open(base_config_path, 'r', encoding='utf-8') as f:
-            base_config = json.load(f)
-        
         # 如果主配置文件不存在，使用基础配置
         if not os.path.exists(config_path):
-            return base_config
+            print(f'主配置文件 {config_path} 不存在，返回基础配置')
+            with open(base_config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
             
-        # 读取主配置
+        # 读取主配置文件，直接返回原始内容，不做任何修改
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            
-        # 确保基础节点存在
-        if 'outbounds' in config:
-            # 保留基础节点（如 Direct）
-            base_outbounds = [outbound for outbound in base_config.get('outbounds', []) 
-                            if outbound.get('tag') in ['Direct', 'Proxy']]
-            # 合并基础节点和其他节点
-            config['outbounds'] = base_outbounds + [
-                outbound for outbound in config['outbounds']
-                if outbound.get('tag') not in ['Direct', 'Proxy']
-            ]
             
         return config
     except Exception as e:
         print(f'读取主配置文件出错: {str(e)}')
         # 如果出错，返回基础配置
-        with open(base_config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(base_config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as base_e:
+            print(f'读取基础配置文件也失败: {str(base_e)}')
+            # 返回一个最小配置
+            return {
+                "outbounds": [],
+                "inbounds": [],
+                "dns": {},
+                "route": {}
+            }
 
 def save_config(config, preserve_outbounds=True):
     """保存主配置文件"""
@@ -310,31 +307,55 @@ def process_subscriptions():
         node_cache.clear()
         
         # 确保主配置中有 outbounds 数组
-        if 'outbounds' not in main_config:
+        if 'outbounds' not in main_config or not isinstance(main_config['outbounds'], list):
+            print(f'警告: process_subscriptions中main_config["outbounds"]不是有效的列表, 类型: {type(main_config.get("outbounds"))}')
             main_config['outbounds'] = []
         
-        # 获取所有订阅名称
-        subscription_names = [sub['name'] for sub in subscriptions]
+        # === 第一步：分类现有节点 ===
+        print('=== 开始节点分类 ===')
+        default_nodes = []      # 默认节点
+        subscription_nodes = [] # 订阅节点
+        filter_nodes = []       # 过滤器节点  
+        extra_nodes = []        # 额外节点
         
-        # 清理旧的节点和过滤器
-        print('清理旧的节点和过滤器...')
-        # 保留所有不是以订阅名称开头和不是过滤器的节点
-        preserved_outbounds = [
-            outbound for outbound in main_config['outbounds']
-            if not (
-                # 删除以订阅名称开头的节点
-                any(outbound.get('tag', '').startswith(f"{name}.") for name in subscription_names) or
-                # 删除以 filter. 开头的过滤器
-                outbound.get('tag', '').startswith('filter.')
-            )
-        ]
-        # 递归处理所有保留节点的 outbounds
-        preserved_outbounds = preserve_outbounds(preserved_outbounds, subscription_names)
-        main_config['outbounds'] = preserved_outbounds
-        print(f'清理后的 outbounds 数量: {len(main_config["outbounds"])}')
-        print('保留的节点:', [outbound.get('tag') for outbound in main_config['outbounds']])
+        for outbound in main_config['outbounds']:
+            tag = outbound.get('tag', '')
+            if tag.startswith('filter.'):
+                filter_nodes.append(outbound)
+                print(f'分类为过滤器节点: {tag}')
+            elif tag.startswith('extra.'):
+                extra_nodes.append(outbound)
+                print(f'分类为额外节点: {tag}')
+            elif any(tag.startswith(f"{sub['name']}.") for sub in subscriptions):
+                subscription_nodes.append(outbound)
+                print(f'分类为订阅节点: {tag}')
+            else:
+                default_nodes.append(outbound)
+                print(f'分类为默认节点: {tag}')
         
-        # 处理每个订阅
+        print(f'节点分类完成 - 默认:{len(default_nodes)}, 订阅:{len(subscription_nodes)}, 过滤器:{len(filter_nodes)}, 额外:{len(extra_nodes)}')
+        
+        # === 第二步：清理和重置 ===
+        # 清空默认节点的outbounds中的三类节点引用
+        for node in default_nodes:
+            if 'outbounds' in node and isinstance(node['outbounds'], list):
+                original_outbounds = node['outbounds'].copy()
+                # 移除所有订阅节点、过滤器节点、额外节点的引用
+                node['outbounds'] = [
+                    out for out in node['outbounds'] 
+                    if not (
+                        out.startswith('filter.') or 
+                        out.startswith('extra.') or 
+                        any(out.startswith(f"{sub['name']}.") for sub in subscriptions)
+                    )
+                ]
+                if original_outbounds != node['outbounds']:
+                    print(f'清理节点 {node.get("tag")} 的outbounds: {original_outbounds} -> {node["outbounds"]}')
+        
+        # === 第三步：处理订阅节点 ===
+        print('=== 开始处理订阅 ===')
+        new_subscription_nodes = []
+        
         for subscription in subscriptions:
             try:
                 print(f'处理订阅: {subscription["name"]}')
@@ -348,20 +369,18 @@ def process_subscriptions():
                 print(f'从订阅 {subscription["name"]} 获取到 {len(data["outbounds"])} 个节点')
                 
                 # 处理节点，添加订阅来源到 tag
-                processed_outbounds = []
                 for outbound in data['outbounds']:
-                    # 创建节点副本
-                    node = outbound.copy()
-                    # 修改 tag
-                    node['tag'] = f"{subscription['name']}.{outbound['tag']}"
-                    # 添加到处理后的列表
-                    processed_outbounds.append(node)
-                    # 添加到缓存
-                    node_cache[node['tag']] = node
+                    # 创建订阅节点副本
+                    subscription_node = outbound.copy()
+                    # 修改 tag 为订阅节点格式
+                    subscription_node['tag'] = f"{subscription['name']}.{outbound['tag']}"
+                    # 添加到新订阅节点列表
+                    new_subscription_nodes.append(subscription_node)
+                    # 添加到缓存供过滤器使用
+                    node_cache[subscription_node['tag']] = subscription_node
+                    print(f'创建订阅节点: {subscription_node["tag"]}')
                 
-                # 将处理后的节点添加到主配置的 outbounds
-                main_config['outbounds'].extend(processed_outbounds)
-                total_added += len(processed_outbounds)
+                total_added += len(data['outbounds'])
                 
                 # 更新订阅的最后更新时间
                 subscription['lastUpdate'] = datetime.now().isoformat()
@@ -373,69 +392,95 @@ def process_subscriptions():
                     'error': str(error)
                 })
         
+        # === 第四步：处理过滤器节点 ===
+        print('=== 开始处理过滤器 ===')
+        new_filter_nodes = []
         
-        # 处理过滤器
-        for filter in filters:
+        for filter_config in filters:
             try:
-                print(f'处理过滤器: {filter["name"]}')
+                print(f'处理过滤器: {filter_config["name"]}')
                 
-                # 获取符合条件的节点
+                # 获取符合条件的订阅节点
                 matched_nodes = []
-                if filter.get('allNodes'):
-                    # 如果选择所有节点，使用所有缓存的节点
+                if filter_config.get('allNodes'):
+                    # 如果选择所有节点，使用所有缓存的订阅节点
                     matched_nodes = [
                         node for node in node_cache.values()
-                        if is_node_match_filter(node['tag'], filter)
+                        if is_node_match_filter(node['tag'], filter_config)
                     ]
-                elif filter.get('node'):
+                elif filter_config.get('node'):
                     # 如果指定了具体节点，只使用该节点
-                    node = node_cache.get(filter['node'])
-                    if node and is_node_match_filter(node['tag'], filter):
+                    node = node_cache.get(filter_config['node'])
+                    if node and is_node_match_filter(node['tag'], filter_config):
                         matched_nodes = [node]
                 
                 if matched_nodes:
-                    # 创建过滤器出站配置
-                    filter_outbound = {
-                        'type': filter.get('mode', 'select'),
-                        'tag': f"filter.{filter['name']}",
+                    # 创建过滤器节点
+                    filter_node = {
+                        'type': filter_config.get('mode', 'select'),
+                        'tag': f"filter.{filter_config['name']}",
                         'outbounds': [node['tag'] for node in matched_nodes]
                     }
                     
                     # 如果是速度测试模式，添加额外参数
-                    if filter.get('mode') == 'urltest':
-                        if filter.get('url'):
-                            filter_outbound['url'] = filter['url']
-                        if filter.get('interval'):
-                            filter_outbound['interval'] = filter['interval']
-                        if filter.get('idle_timeout'):
-                            filter_outbound['idle_timeout'] = filter['idle_timeout']
+                    if filter_config.get('mode') == 'urltest':
+                        if filter_config.get('url'):
+                            filter_node['url'] = filter_config['url']
+                        if filter_config.get('interval'):
+                            filter_node['interval'] = filter_config['interval']
+                        if filter_config.get('idle_timeout'):
+                            filter_node['idle_timeout'] = filter_config['idle_timeout']
                     
-                    # 添加到主配置的 outbounds
-                    main_config['outbounds'].append(filter_outbound)
-                    print(f'添加过滤器出站配置: {filter_outbound["tag"]}，包含 {len(matched_nodes)} 个节点')
+                    new_filter_nodes.append(filter_node)
+                    print(f'创建过滤器节点: {filter_node["tag"]}，包含 {len(matched_nodes)} 个订阅节点')
                 
             except Exception as error:
-                print(f'处理过滤器 {filter["name"]} 时出错:', str(error))
+                print(f'处理过滤器 {filter_config["name"]} 时出错:', str(error))
                 errors.append({
-                    'filter': filter['name'],
+                    'filter': filter_config['name'],
                     'error': str(error)
                 })
         
-        # 使用统一函数更新所有节点的 outbounds
-        print('使用统一函数更新所有节点的 outbounds...')
-        update_all_node_outbounds(main_config)
+        # === 第五步：验证和保留额外节点 ===
+        print('=== 验证额外节点 ===')
+        valid_extra_nodes = []
+        for node in extra_nodes:
+            tag = node.get('tag', '')
+            if tag.startswith('extra.'):
+                valid_extra_nodes.append(node)
+                print(f'保留有效额外节点: {tag}')
+            else:
+                print(f'跳过无效额外节点: {tag}')
         
-        print('更新后的 outbounds:', [ob.get('tag') for ob in main_config['outbounds']])
+        # === 第六步：收集所有三类节点的tag ===
+        all_managed_node_tags = []
+        all_managed_node_tags.extend([node['tag'] for node in valid_extra_nodes])
+        all_managed_node_tags.extend([node['tag'] for node in new_filter_nodes]) 
+        all_managed_node_tags.extend([node['tag'] for node in new_subscription_nodes])
+
+        print(f'管理的节点tags: {all_managed_node_tags}')
         
-        # 检查每个节点的 outbounds 是否包含订阅和过滤器节点
-        print('\n=== 节点 outbounds 检查 ===')
-        for outbound in main_config['outbounds']:
-            if isinstance(outbound, dict) and 'outbounds' in outbound:
-                tag = outbound.get('tag', 'Unknown')
-                print(f'节点 {tag} 的 outbounds: {outbound["outbounds"]}')
-        print('=== 检查完成 ===\n')
+        # === 第七步：更新默认节点的outbounds ===
+        print('=== 更新默认节点outbounds ===')
+        for node in default_nodes:
+            if 'outbounds' in node and isinstance(node['outbounds'], list):
+                # 添加所有三类节点到默认节点的outbounds中
+                original_count = len(node['outbounds'])
+                node['outbounds'].extend(all_managed_node_tags)
+                print(f'更新默认节点 {node.get("tag")} 的outbounds: 从{original_count}个增加到{len(node["outbounds"])}个')
         
-        # 保存更新后的配置
+        # === 第八步：重新组装主配置的outbounds ===
+        print('=== 重新组装outbounds ===')
+        main_config['outbounds'] = []
+        main_config['outbounds'].extend(default_nodes)
+        main_config['outbounds'].extend(valid_extra_nodes)
+        main_config['outbounds'].extend(new_filter_nodes)
+        main_config['outbounds'].extend(new_subscription_nodes)
+        
+        
+        print(f'最终outbounds组成: 默认:{len(default_nodes)}, 订阅:{len(new_subscription_nodes)}, 过滤器:{len(new_filter_nodes)}, 额外:{len(valid_extra_nodes)}')
+        
+        # === 第九步：保存配置 ===
         save_config(main_config, preserve_outbounds=False)
         save_subscribe_config(config)
         print('配置文件保存成功')
@@ -601,32 +646,104 @@ def save_extra_outbounds():
         if not isinstance(data, list):
             return jsonify({'error': '额外出站必须是数组'}), 400
         
-        # 保存额外出站配置
-        config['ex_outbounds'] = data
-        save_subscribe_config(config)
-        
-        # 先将额外出站节点添加到主配置的 outbounds 中（如果还不存在）
-        extra_tags = [outbound['tag'] for outbound in data if isinstance(outbound, dict) and 'tag' in outbound]
-        existing_tags = [outbound.get('tag') for outbound in main_config['outbounds']]
+        # === 验证额外节点的tag前缀 ===
+        print('=== 验证额外节点tag前缀 ===')
+        valid_extra_outbounds = []
+        invalid_nodes = []
         
         for outbound in data:
             if isinstance(outbound, dict) and 'tag' in outbound:
                 tag = outbound['tag']
-                # 如果额外出站节点不在主配置中，添加它
-                if tag not in existing_tags:
-                    main_config['outbounds'].append(outbound)
-                    print(f'添加额外出站节点到主配置: {tag}')
+                if tag.startswith('extra.'):
+                    valid_extra_outbounds.append(outbound)
+                    print(f'有效额外节点: {tag}')
                 else:
-                    # 如果存在，更新其配置
-                    for i, existing_outbound in enumerate(main_config['outbounds']):
-                        if existing_outbound.get('tag') == tag:
-                            main_config['outbounds'][i] = outbound
-                            print(f'更新现有额外出站节点: {tag}')
-                            break
+                    # 自动添加前缀
+                    outbound['tag'] = f"extra.{tag}"
+                    valid_extra_outbounds.append(outbound)
+                    print(f'自动添加前缀: {tag} -> {outbound["tag"]}')
+            else:
+                invalid_nodes.append(outbound)
+                print(f'无效节点配置: {outbound}')
         
-        # 使用统一函数更新所有节点的 outbounds
-        print('保存额外出站后，更新所有节点的 outbounds...')
-        update_all_node_outbounds(main_config)
+        if invalid_nodes:
+            return jsonify({'error': f'发现无效节点配置: {invalid_nodes}'}), 400
+        
+        # 保存额外出站配置
+        config['ex_outbounds'] = valid_extra_outbounds
+        save_subscribe_config(config)
+        
+        # === 分类现有节点并处理额外节点 ===
+        print('=== 分类现有节点并处理额外节点 ===')
+        default_nodes = []
+        subscription_nodes = []
+        filter_nodes = []
+        extra_nodes = []
+        
+        # 确保 main_config['outbounds'] 是一个列表
+        if 'outbounds' not in main_config or not isinstance(main_config['outbounds'], list):
+            print(f'警告: main_config["outbounds"] 不是有效的列表, 类型: {type(main_config.get("outbounds"))}')
+            main_config['outbounds'] = []
+        
+        print(f'main_config["outbounds"]的类型: {type(main_config["outbounds"])}, 长度: {len(main_config["outbounds"])}')
+        
+        # 分类现有节点
+        for outbound in main_config['outbounds']:
+            tag = outbound.get('tag', '')
+            if tag.startswith('filter.'):
+                filter_nodes.append(outbound)
+            elif tag.startswith('extra.'):
+                # 跳过旧的额外节点，我们会用新的替换
+                continue
+            elif '.' in tag and not tag.startswith('extra.') and not tag.startswith('filter.'):
+                subscription_nodes.append(outbound)
+            else:
+                default_nodes.append(outbound)
+        
+        # 添加新的额外节点
+        extra_nodes = valid_extra_outbounds
+        
+        # === 更新默认节点的outbounds ===
+        print('=== 更新默认节点的outbounds ===')
+        all_managed_node_tags = []
+        all_managed_node_tags.extend([node['tag'] for node in subscription_nodes])
+        all_managed_node_tags.extend([node['tag'] for node in filter_nodes])
+        all_managed_node_tags.extend([node['tag'] for node in extra_nodes])
+        
+        for node in default_nodes:
+            if 'outbounds' in node and isinstance(node['outbounds'], list):
+                # 清理旧的三类节点引用
+                original_outbounds = node['outbounds'].copy()
+                print(f'处理默认节点 {node.get("tag")}, 原始outbounds: {original_outbounds}')
+                
+                # 检查outbounds中元素的类型并过滤
+                filtered_outbounds = []
+                for out in node['outbounds']:
+                    if not isinstance(out, str):
+                        print(f'警告: 节点 {node.get("tag")} 的outbounds中发现非字符串元素: {out} (类型: {type(out)})')
+                        continue
+                    
+                    # 过滤三类节点引用
+                    if not (
+                        out.startswith('filter.') or 
+                        out.startswith('extra.') or 
+                        ('.' in out and not out.startswith('filter.') and not out.startswith('extra.'))
+                    ):
+                        filtered_outbounds.append(out)
+                
+                node['outbounds'] = filtered_outbounds
+                # 添加新的三类节点
+                node['outbounds'].extend(all_managed_node_tags)
+                print(f'更新默认节点 {node.get("tag")} 的outbounds: {original_outbounds} -> {node["outbounds"]}')
+        
+        # === 重新组装主配置的outbounds ===
+        main_config['outbounds'] = []
+        main_config['outbounds'].extend(default_nodes)
+        main_config['outbounds'].extend(subscription_nodes)
+        main_config['outbounds'].extend(filter_nodes)
+        main_config['outbounds'].extend(extra_nodes)
+        
+        print(f'最终outbounds组成: 默认:{len(default_nodes)}, 订阅:{len(subscription_nodes)}, 过滤器:{len(filter_nodes)}, 额外:{len(extra_nodes)}')
         
         # 保存更新后的主配置
         save_config(main_config, preserve_outbounds=False)
@@ -1729,66 +1846,59 @@ def reset_main_config():
         return jsonify({'success': False, 'error': f'重置配置文件失败: {str(e)}'}), 500
 
 def update_all_node_outbounds(main_config):
-    """统一更新所有节点的outbounds，包含订阅节点、过滤器节点和额外出站节点"""
+    """统一更新所有默认节点的outbounds，添加订阅节点、过滤器节点和额外节点"""
     try:
+        print('=== 开始更新默认节点的outbounds ===')
+        
         # 读取订阅配置获取额外出站
         subscribe_config = read_subscribe_config()
-        
-        # 获取所有订阅名称
         subscription_names = [sub['name'] for sub in subscribe_config.get('subscriptions', [])]
         
-        # 获取所有订阅节点标签
-        subscription_tags = [
-            outbound['tag'] for outbound in main_config['outbounds']
-            if outbound.get('tag', '') and any(outbound['tag'].startswith(f"{name}.") for name in subscription_names)
-        ]
+        # === 分类节点 ===
+        default_nodes = []
+        subscription_tags = []
+        filter_tags = []
+        extra_tags = []
         
-        # 获取所有过滤器节点标签
-        filter_tags = [
-            outbound['tag'] for outbound in main_config['outbounds']
-            if outbound.get('tag', '').startswith('filter.')
-        ]
-        
-        # 获取所有额外出站节点标签
-        extra_outbound_tags = [
-            outbound['tag'] for outbound in subscribe_config.get('ex_outbounds', [])
-            if isinstance(outbound, dict) and 'tag' in outbound
-        ]
-        
-        print(f'订阅节点标签: {subscription_tags}')
-        print(f'过滤器节点标签: {filter_tags}')
-        print(f'额外出站节点标签: {extra_outbound_tags}')
-        
-        # 所有需要添加的节点标签
-        all_additional_tags = filter_tags+ subscription_tags + extra_outbound_tags
-        
-        # 更新所有包含 outbounds 的节点
         for outbound in main_config['outbounds']:
-            if isinstance(outbound, dict) and 'outbounds' in outbound:
-                # 检查是否是订阅节点或过滤器节点（这些不需要更新）
-                is_subscription_node = any(outbound.get('tag', '').startswith(f"{name}.") for name in subscription_names)
-                is_filter_node = outbound.get('tag', '').startswith('filter.')
-                
-                # 如果不是订阅节点或过滤器节点，则更新其 outbounds
-                if not (is_subscription_node or is_filter_node):
-                    print(f'正在更新节点: {outbound.get("tag")}')
-                    
-                    # 保留原有的基础节点（非订阅、非过滤器、非额外出站）
-                    original_outbounds = [
-                        ob for ob in outbound['outbounds']
-                        if not (
-                            # 排除订阅节点
-                            any(ob.startswith(f"{name}.") for name in subscription_names) or
-                            # 排除过滤器节点
-                            ob.startswith('filter.') or
-                            # 排除额外出站节点
-                            ob in extra_outbound_tags
-                        )
-                    ]
-                    
-                    # 添加所有节点（订阅、过滤器、额外出站）
-                    outbound['outbounds'] = original_outbounds + all_additional_tags
-                    print(f'节点 {outbound.get("tag")} 更新后的 outbounds: {outbound["outbounds"]}')
+            tag = outbound.get('tag', '')
+            if tag.startswith('filter.'):
+                filter_tags.append(tag)
+            elif tag.startswith('extra.'):
+                extra_tags.append(tag)
+            elif any(tag.startswith(f"{name}.") for name in subscription_names):
+                subscription_tags.append(tag)
+            else:
+                # 这是默认节点
+                if 'outbounds' in outbound and isinstance(outbound['outbounds'], list):
+                    default_nodes.append(outbound)
+        
+        # 收集所有三类节点的tags
+        all_managed_tags = subscription_tags + filter_tags + extra_tags
+        
+        print(f'订阅节点: {subscription_tags}')
+        print(f'过滤器节点: {filter_tags}')
+        print(f'额外节点: {extra_tags}')
+        print(f'默认节点数量: {len(default_nodes)}')
+        
+        # === 更新默认节点的outbounds ===
+        for node in default_nodes:
+            original_outbounds = node['outbounds'].copy()
+            
+            # 清理旧的三类节点引用
+            node['outbounds'] = [
+                out for out in node['outbounds'] 
+                if not (
+                    out.startswith('filter.') or 
+                    out.startswith('extra.') or 
+                    any(out.startswith(f"{name}.") for name in subscription_names)
+                )
+            ]
+            
+            # 添加新的三类节点
+            node['outbounds'].extend(all_managed_tags)
+            
+            print(f'更新默认节点 {node.get("tag")} 的outbounds: {len(original_outbounds)} -> {len(node["outbounds"])}')
         
         return True
     except Exception as e:
